@@ -482,7 +482,7 @@ class Desktop(object):
         paths = []
         count = 0
         for image in images:
-            if count > image_count:
+            if count >= image_count:
                 break
             # Don't re-use an image that's already downloaded
             if image.filename in self.downloaded_images:
