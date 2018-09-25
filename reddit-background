@@ -187,10 +187,10 @@ class DarwinHandler(OSHandler):
 
 class LinuxHandler(OSHandler):
     def set_background(self, path, **kwargs):
-        monitor_paths = subprocess.Popen(['xfconf-query -c xfce4-desktop -l | grep last-image | egrep "monitor([0-1])" | egrep "workspace(0)"'], shell=True, stdout=subprocess.PIPE).communicate()[0]
+        monitor_paths = subprocess.Popen(['xfconf-query -c xfce4-desktop -l | grep last-image | egrep "monitor" | egrep "workspace(0)"'], shell=True, stdout=subprocess.PIPE).communicate()[0]
         for mp in monitor_paths.split():
             output = subprocess.Popen(['xfconf-query -c xfce4-desktop -p {} -s "{}"'.format(mp.strip('\n'), path)], shell=True, stdout=subprocess.PIPE).communicate()
-            
+
             print(output[0])
             #warn(u"unable to set background to '{}'".format(path))
 
@@ -734,20 +734,20 @@ class Image(object):
         maxwidth = max(draw.textsize(l, font=font)[0] for l in lines)
 
         lineheight = draw.textsize(self.title, font=font)[1]
-        maxheight = len(lines) * lineheight 
+        maxheight = len(lines) * lineheight
 
         # Calculate the x and y
         if 'left' in conf.position_tokens:
             x = conf.margin
-        elif 'right' in conf.position_tokens:        
+        elif 'right' in conf.position_tokens:
             x = max(conf.margin, img.width - maxwidth - conf.margin)
-        else:                            
+        else:
             x = max(conf.margin, (img.width - maxwidth) / 2)
-        if 'top' in conf.position_tokens:            
+        if 'top' in conf.position_tokens:
             y = conf.margin
-        elif 'bottom' in conf.position_tokens:       
+        elif 'bottom' in conf.position_tokens:
             y = max(conf.margin, img.height - maxheight - conf.margin)
-        else:                            
+        else:
             y = max(conf.margin, (img.height - maxheight) / 2)
 
         # Draw the background box with transparent color, then composite with
@@ -871,9 +871,9 @@ def _read_config_file(desktops):
                 desktop.subreddit_tokens = tokens
 
     def parse_imprint_tokens(desktop, section):
-        for confname, funcname in ( 
+        for confname, funcname in (
                 ( 'imprint_position', 'set_position_tokens' ),
-                ( 'imprint_size',     'set_size_tokens'     ), 
+                ( 'imprint_size',     'set_size_tokens'     ),
                 ( 'imprint_font',     'set_font_tokens'     ),
                 ):
             try:
