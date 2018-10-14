@@ -190,9 +190,8 @@ class LinuxHandler(OSHandler):
         monitor_paths = subprocess.Popen(['xfconf-query -c xfce4-desktop -l | grep last-image | egrep "monitor" | egrep "workspace(0)"'], shell=True, stdout=subprocess.PIPE).communicate()[0]
         for mp in monitor_paths.split():
             output = subprocess.Popen(['xfconf-query -c xfce4-desktop -p {} -s "{}"'.format(mp.strip('\n'), path)], shell=True, stdout=subprocess.PIPE).communicate()
-
-            print(output[0])
-            #warn(u"unable to set background to '{}'".format(path))
+            if(output[1]):
+                warn(u"unable to set background to '{}'".format(path))
 
     def get_desktop_resolutions(self):
         # source: http://stackoverflow.com/questions/8705814/get-display-count-and-
@@ -565,7 +564,6 @@ def _clear_download_directory(desktops):
         if len(folders) == len(desktops):
             for f in folders:
                 files = glob.glob('{}/{}/*'.format(dirname, f))
-                print(files)
                 for fs in files:
                     os.remove(fs)
         else:
