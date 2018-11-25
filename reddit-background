@@ -187,9 +187,7 @@ class DarwinHandler(OSHandler):
 
 class LinuxHandler(OSHandler):
     def set_background(self, path, **kwargs):
-        monitor_paths = subprocess.Popen(['xfconf-query -c xfce4-desktop -l | grep last-image | egrep "monitor"'], shell=True, stdout=subprocess.PIPE).communicate()[0]
-        for mp in monitor_paths.split():
-            output = subprocess.Popen(['xfconf-query -c xfce4-desktop -p {} -s "{}"'.format(mp.strip('\n'), path)], shell=True, stdout=subprocess.PIPE).communicate()
+            output = subprocess.Popen(['feh --bg-scale \'{}\''.format(path)], shell=True, stdout=subprocess.PIPE).communicate()
             if(output[1]):
                 warn(u"unable to set background to '{}'".format(path))
 
@@ -214,6 +212,9 @@ class LinuxHandler(OSHandler):
             if mode.id in modes:
                 matches.append((mode.width, mode.height))
         return matches
+    
+    def _get_desktop_env(self):
+        pass
 
 
 class ImageChooser(object):
