@@ -473,9 +473,9 @@ class Desktop(object):
 
     def fetch_backgrounds(self, image_count):
         images = []
-        for subreddit in self.subreddits:
-            for image in subreddit.fetch_images():
-                images.append(image)
+        random_subreddit = random.choice(self.subreddits)
+        for image in random_subreddit.fetch_images():
+            images.append(image)
 
         chooser_cls = _IMAGE_CHOOSER_CLASSES[get_image_chooser()]
         chooser = chooser_cls(self, images)
