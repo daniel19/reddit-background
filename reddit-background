@@ -190,6 +190,8 @@ class LinuxHandler(OSHandler):
             output = subprocess.Popen(['feh --bg-scale \'{}\''.format(path)], shell=True, stdout=subprocess.PIPE).communicate()
             if(output[1]):
                 warn(u"unable to set background to '{}'".format(path))
+            else:
+                lightdm_process = subprocess.Popen(['sudo cp \'{}\' /usr/share/backgrounds/default.png'.format(path)], shell=True, stdout=subprocess.PIPE).communicate()
 
     def get_desktop_resolutions(self):
         # source: http://stackoverflow.com/questions/8705814/get-display-count-and-
