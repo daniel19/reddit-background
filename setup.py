@@ -9,8 +9,8 @@ setup(
         long_description_content_type='text/markdown',
         packages=find_packages(),
         entry_points={
-            'console_scripts': ['imgur_loader=reddit_background.imgur.imgur_loader:main']
+            'console_scripts': ['imgur_loader=reddit_background.imgur.imgur_loader:main', 'reddit_background=reddit_background.reddit_background:main']
         },
-        python_requires='>=3.7',
+        python_requires='>=3.7', install_requires=['']
 )
 
