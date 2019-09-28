@@ -1,4 +1,10 @@
 *.swp
+*.pyc
+credentials.json
 
 #virutalenv
 env/
+build/
+dist/
+*.egg-info*
+.idea/

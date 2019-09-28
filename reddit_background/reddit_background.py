@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python
 """
 NAME
 
@@ -20,7 +20,6 @@ AUTHOR
 
     Rick Harris <rconradharris@gmail.com>
 """
-import ConfigParser
 import argparse
 import datetime
 import glob
@@ -34,8 +33,14 @@ import shutil
 import socket
 import subprocess
 import sys
-import urllib2
-import urlparse
+from urllib.request import build_opener
+from urllib.request import HTTPError
+from urllib.request import URLError
+from urllib.request import urlretrieve
+import urllib.parse as urlparse
+
+from configparser import ConfigParser, NoOptionError
+from reddit_background.imgur.imgur_loader import ImgurWallpaper
 
 # since PIL is not in the standard library, using a try so it isn't necessary for the script
 try:
@@ -74,6 +79,7 @@ WEIGHT_RESOLUTION = 1.0
 WEIGHT_JITTER = 0.25
 WEIGHT_REDDIT_SCORE = 1.0
 
+
 def set_verbosity(verbosity):
     global _VERBOSITY
     _VERBOSITY = verbosity
@@ -100,7 +106,7 @@ def set_download_directory(directory):
 def get_download_directory():
     dirname = _DOWNLOAD_DIRECTORY or DEFAULT_DOWNLOAD_DIRECTORY
     # This needs to be Unicode so that os.listdir returns Unicode filenames
-    return unicode(os.path.expanduser(dirname))
+    return str(os.path.expanduser(dirname))
 
 
 def set_image_count(image_count):
@@ -130,14 +136,14 @@ def get_image_scaling():
     return _IMAGE_SCALING
 
 
-def _safe_makedirs(name, mode=0777):
+def _safe_makedirs(name, mode=0o777):
     if not os.path.exists(name):
         os.makedirs(name, mode=mode)
 
 
 def warn(msg):
     """Print a warning to stderr"""
-    print >> sys.stderr, "warning: {}".format(msg)
+    print('warning: {}'.format(msg), file=sys.stderr)
 
 
 def log(msg, level=1):
@@ -148,11 +154,12 @@ def log(msg, level=1):
     etc...
     """
     if get_verbosity() >= level:
-        print >> sys.stderr, msg
+        print(msg, file=sys.stderr)
 
 
 class OSHandler(object):
     """Any OS specific code should go in these classes."""
+
     def set_background(self, path, **kwargs):
         raise NotImplementedError
 
@@ -163,7 +170,7 @@ class OSHandler(object):
     def get_handler(cls):
         if sys.platform == 'darwin':
             return DarwinHandler()
-        elif sys.platform == 'linux2':
+        elif 'linux' in sys.platform:
             return LinuxHandler()
         else:
             raise Exception("OS not supported")
@@ -171,34 +178,36 @@ class OSHandler(object):
 
 class DarwinHandler(OSHandler):
     def set_background(self, path, **kwargs):
-        script = u'tell application "System Events" to set picture of item'\
-                u' {num} of (a reference to every desktop) to "{path}"'\
-                .format(num=kwargs['num'], path=path)
+        script = u'tell application "System Events" to set picture of item' \
+                 u' {num} of (a reference to every desktop) to "{path}"' \
+            .format(num=kwargs['num'], path=path)
         cmd = ['/usr/bin/osascript', '-e', script]
         if subprocess.call(cmd):
             warn(u"unable to set background to '{}'".format(path))
 
     def get_desktop_resolutions(self):
         p = subprocess.Popen(["/usr/sbin/system_profiler", "SPDisplaysDataType"],
-                stdout=subprocess.PIPE)
+                             stdout=subprocess.PIPE)
         (output, err) = p.communicate()
         return re.findall(RE_RESOLUTION_DISPLAYS, output)
 
 
 class LinuxHandler(OSHandler):
     def set_background(self, path, **kwargs):
-            output = subprocess.Popen(['feh --bg-scale \'{}\''.format(path)], shell=True, stdout=subprocess.PIPE).communicate()
-            if(output[1]):
-                warn(u"unable to set background to '{}'".format(path))
-            else:
-                lightdm_process = subprocess.Popen(['sudo cp \'{}\' /usr/share/backgrounds/default.png'.format(path)], shell=True, stdout=subprocess.PIPE).communicate()
+        output = subprocess.Popen(['feh --bg-scale \'{}\''.format(path)], shell=True,
+                                  stdout=subprocess.PIPE).communicate()
+        if (output[1]):
+            warn(u"unable to set background to '{}'".format(path))
+        else:
+            lightdm_process = subprocess.Popen(['sudo cp \'{}\' /usr/share/backgrounds/default.png'.format(path)],
+                                               shell=True, stdout=subprocess.PIPE).communicate()
 
     def get_desktop_resolutions(self):
         # source: http://stackoverflow.com/questions/8705814/get-display-count-and-
         # resolution-for-each-display-in-python-without-xrandr
-        import Xlib.display
         import Xlib.ext.randr
-        d = Xlib.display.Display()
+        from Xlib import display
+        d = display.Display()
         s = d.screen()
         window = s.root.create_window(0, 0, 1, 1, 1, s.root_depth)
         res = Xlib.ext.randr.get_screen_resources(window)
@@ -214,7 +223,7 @@ class LinuxHandler(OSHandler):
             if mode.id in modes:
                 matches.append((mode.width, mode.height))
         return matches
-    
+
     def _get_desktop_env(self):
         pass
 
@@ -345,11 +354,11 @@ class BestMatchImageChooser(ImageChooser):
                     WEIGHT_JITTER * self._score_jitter(image))
             image.reddit_score = (
                     WEIGHT_REDDIT_SCORE * self._score_reddit_score(
-                        image, log_lo_score, log_hi_score))
+                image, log_lo_score, log_hi_score))
             score_parts = [image.aspect_ratio_score,
-                    image.resolution_score,
-                    image.jitter_score,
-                    image.reddit_score]
+                           image.resolution_score,
+                           image.jitter_score,
+                           image.reddit_score]
             image.score = float(sum(score_parts)) / len(score_parts)
 
         # Sort so highest scoring images are last
@@ -379,9 +388,9 @@ class BestMatchImageChooser(ImageChooser):
 
 
 _IMAGE_CHOOSER_CLASSES = {
-        'random': RandomImageChooser,
-        'bestmatch': BestMatchImageChooser,
-        }
+    'random': RandomImageChooser,
+    'bestmatch': BestMatchImageChooser,
+}
 
 
 class ImprintConf(object):
@@ -389,9 +398,10 @@ class ImprintConf(object):
         self.set_position_tokens(None)
         self.set_size_tokens(None)
         self.set_font_tokens(None)
-    
+
     def __repr__(self):
-        return '{}, {}, {}, {}, {}'.format(self.font_size, self.box_width, self.font_filename, self.margin, self.padding)
+        return '{}, {}, {}, {}, {}'.format(self.font_size, self.box_width, self.font_filename, self.margin,
+                                           self.padding)
 
     def _parse_token(self, tokens, default_tokens, pos, conv, errormsg):
         if tokens is None or len(tokens) <= pos:
@@ -413,29 +423,30 @@ class ImprintConf(object):
 
     def set_size_tokens(self, tokens):
         self.box_width = self._parse_token(tokens, DEFAULT_IMPRINT_SIZE_TOKENS,
-                0, str, 'Invalid box width specified for title imprint: %s')
+                                           0, str, 'Invalid box width specified for title imprint: %s')
         self.margin = self._parse_token(tokens, DEFAULT_IMPRINT_SIZE_TOKENS,
-                1, int, 'Invalid box margin specified for title imprint: %s')
+                                        1, int, 'Invalid box margin specified for title imprint: %s')
         self.padding = self._parse_token(tokens, DEFAULT_IMPRINT_SIZE_TOKENS,
-                2, int, 'Invalid box padding specified for title imprint: %s')
+                                         2, int, 'Invalid box padding specified for title imprint: %s')
         self.transparency = self._parse_token(tokens, DEFAULT_IMPRINT_SIZE_TOKENS,
-                3, int, 'Invalid box transparency specified for title imprint: %s')
+                                              3, int, 'Invalid box transparency specified for title imprint: %s')
         self.transparency = max(0, min(100, self.transparency))
 
     def set_font_tokens(self, tokens):
         self.font_filename = self._parse_token(tokens, DEFAULT_IMPRINT_FONT_TOKENS,
-                0, None, None)
+                                               0, None, None)
         self.font_size = self._parse_token(tokens, DEFAULT_IMPRINT_FONT_TOKENS,
-                1, int, 'Invalid font specified for title imprint: %s')
+                                           1, int, 'Invalid font specified for title imprint: %s')
         self.font_color = self._parse_token(tokens, DEFAULT_IMPRINT_FONT_TOKENS,
-                2, None, None)
+                                            2, None, None)
 
         def __str__(self):
             '''For debugging'''
+
         ret = []
         for name in ('position_tokens', 'box_width', 'margin',
-                'padding', 'transparency', 'font_filename', 'font_size',
-                'font_color'):
+                     'padding', 'transparency', 'font_filename', 'font_size',
+                     'font_color'):
             ret.append('%s:%s' % (name, getattr(self, name)))
         return '\n'.join(ret)
 
@@ -496,7 +507,7 @@ class Desktop(object):
                 continue
             try:
                 path = _download_to_directory(
-                        image.url, self.download_directory, image.filename)
+                    image.url, self.download_directory, image.filename)
             except URLOpenError:
                 warn(u"unable to download '{}', skipping...".format(image.url))
                 continue  # Try next image...
@@ -525,7 +536,7 @@ def _get_desktops_with_defaults():
         width = int(res[0])
         height = int(res[1])
         desktop = Desktop(num, width, height,
-                subreddit_tokens=DEFAULT_SUBREDDIT_TOKENS)
+                          subreddit_tokens=DEFAULT_SUBREDDIT_TOKENS)
         desktops.append(desktop)
     return desktops
 
@@ -535,13 +546,13 @@ class URLOpenError(Exception):
 
 
 def _urlopen(url):
-    opener = urllib2.build_opener()
+    opener = build_opener()
     opener.addheaders = [('User-Agent', DEFAULT_USER_AGENT)]
     try:
         return opener.open(url)
     except (socket.error,
-            urllib2.HTTPError,
-            urllib2.URLError):
+            HTTPError,
+            URLError):
         raise URLOpenError
 
 
@@ -552,19 +563,13 @@ def _download_to_directory(url, dirname, filename):
     path = os.path.join(dirname, filename)
 
     log(u"Downloading '{0}' to '{1}'".format(url, path))
-    response = _urlopen(url)
-    try:
-        with open(path, 'w') as f:
-            f.write(response.read())
-    finally:
-        response.close()
-
+    urlretrieve(url, path)
     return path
 
 
 def _clear_download_directory(desktops):
     dirname = get_download_directory()
-    #check contents of download dir
+    # check contents of download dir
     if os.path.exists(dirname):
         folders = os.listdir(dirname)
         if len(folders) == len(desktops):
@@ -575,7 +580,6 @@ def _clear_download_directory(desktops):
         else:
             shutil.rmtree(dirname)
             _safe_makedirs(dirname)
-
 
 
 def _get_northern_hemisphere_season():
@@ -593,6 +597,7 @@ def _get_northern_hemisphere_season():
     else:
         return 'winter'
 
+
 def slugify(value):
     """
     Normalizes string, converts to lowercase, removes non-alpha characters,
@@ -600,19 +605,23 @@ def slugify(value):
     """
     import unicodedata
     value = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore')
-    value = unicode(re.sub('[^\w\s-]', '', value).strip().lower())
-    value = unicode(re.sub('[-\s]+', '-', value))
+    if type(value) == bytes:
+        value = value.decode('utf-8')
+
+    value = str(re.sub('[^\w\s-]', '', value).strip().lower())
+    value = str(re.sub('[-\s]+', '-', value))
     return value
+
 
 class Image(object):
     TITLE_MAX_LENGTH = 64
 
     def __init__(self, width, height, url, title, raw_reddit_score,
-            score=0.0,
-            aspect_ratio_score=0.0,
-            resolution_score=0.0,
-            jitter_score=0.0,
-            reddit_score=0.0):
+                 score=0.0,
+                 aspect_ratio_score=0.0,
+                 resolution_score=0.0,
+                 jitter_score=0.0,
+                 reddit_score=0.0):
         self.width = width
         self.height = height
         self._url = url
@@ -655,9 +664,9 @@ class Image(object):
     def _ensure_pil_available(self, option):
         if not pil_available:
             raise ImportError(u"Cannot imprint title on image because the"
-                    u" python imaging library is not available."
-                    u" Please install `pillow` or remove the '%s'"
-                    u" option from your config." % option)
+                              u" python imaging library is not available."
+                              u" Please install `pillow` or remove the '%s'"
+                              u" option from your config." % option)
 
     def fit_to_desktop(self, desktop):
         self._ensure_pil_available('fit')
@@ -673,10 +682,10 @@ class Image(object):
             img = img.resize((desktop.width, int(desktop.width / image_ratio)))
         canvas = pilImage.new('RGB', (desktop.width, desktop.height), (0, 0, 0))
         canvas.paste(img, (max(0, int((desktop.width - img.width) / 2.0)),
-            max(0, int((desktop.height - img.height) / 2.0))))
+                           max(0, int((desktop.height - img.height) / 2.0))))
         img = canvas
         img.save(os.path.join(desktop.download_directory, self.filename),
-                "JPEG", quality=85)
+                 "JPEG", quality=85)
         self.width = img.width
         self.height = img.height
 
@@ -688,7 +697,7 @@ class Image(object):
         for tl in text.splitlines():
             start = 0
             curparts = []
-            for part in ( t for t in tl.split() if t ):
+            for part in (t for t in tl.split() if t):
                 curparts.append(part)
                 if draw.textsize(u' '.join(curparts), font=font)[0] > maxwidth:
                     if len(curparts) == 1:
@@ -696,7 +705,7 @@ class Image(object):
                         curparts = []
                     else:
                         lines.append(u' '.join(curparts[:-1]))
-                        curparts = [ curparts[-1] ]
+                        curparts = [curparts[-1]]
             if len(curparts) > 0:
                 lines.append(u' '.join(curparts))
         return lines
@@ -707,9 +716,9 @@ class Image(object):
             font = pilImageFont.truetype(conf.font_filename, conf.font_size)
         except IOError:
             warn(u"Cannot open font file `%s`.  This must be specified as the"
-                    u" font filename, not the font name fromn system dialogs"
-                    u" (although the two are often the same). Trying `%s.ttf`"
-                    u" instead." % conf.font_filename)
+                 u" font filename, not the font name fromn system dialogs"
+                 u" (although the two are often the same). Trying `%s.ttf`"
+                 u" instead." % conf.font_filename)
             font = pilImageFont.truetype(default, conf.font_size)
         return font
 
@@ -781,11 +790,11 @@ class Image(object):
         # Save the image
         img = img.convert('RGB')
         img.save(os.path.join(desktop.download_directory, self.filename),
-                "JPEG", quality=85)
+                 "JPEG", quality=85)
 
 
 class Subreddit(object):
-    def __init__(self, desktop, name, sort='top', limit=25, timeframe='month'):
+    def __init__(self, desktop, name, sort='top', limit=100, timeframe='month'):
         self.desktop = desktop
         self.name = name
         self.sort = sort
@@ -795,15 +804,15 @@ class Subreddit(object):
     def fetch_images(self):
         url = 'http://reddit.com/r/{subreddit}/{sort}.json?t={timeframe}&limit={limit}'
         url = url.format(subreddit=self.name,
-                sort=self.sort,
-                timeframe=self.timeframe,
-                limit=self.limit)
+                         sort=self.sort,
+                         timeframe=self.timeframe,
+                         limit=self.limit)
 
         try:
             response = _urlopen(url)
         except URLOpenError:
             warn("error fetching images from subreddit '{0}',"
-                    " skipping...".format(self.name))
+                 " skipping...".format(self.name))
             return []
 
         try:
@@ -815,16 +824,40 @@ class Subreddit(object):
         for child in data['data']['children']:
             data = child['data']
             try:
-                image_data = data['preview']['images'][0]['source']
+                if 'imgur' in data['url']:
+                    imgur_url = data['url']
+                    if ImgurWallpaper.is_single_image(imgur_url):
+                        image_data = ImgurWallpaper.load_from_api(imgur_url)
+                        image_data['url'] = image_data['link']
+                        image_data['score'] = image_data['views']
+
+                        image = Image(image_data['width'],
+                                      image_data['height'],
+                                      image_data['url'],
+                                      data['title'],
+                                      int(data['score']))
+                        images.append(image)
+                    else:
+                        # Imgur Album is found.
+                        for image_data in ImgurWallpaper.load_imgur_album(imgur_url):
+                            image_data['url'] = image_data['link']
+                            image_data['score'] = image_data['views']
+                            image = Image(image_data['width'],
+                                          image_data['height'],
+                                          image_data['url'],
+                                          data['title'],
+                                          int(data['score']))
+                            images.append(image)
+                else:
+                    image_data = data['preview']['images'][0]['source']
+                    image = Image(image_data['width'],
+                                  image_data['height'],
+                                  image_data['url'],
+                                  data['title'],
+                                  int(data['score']))
+                    images.append(image)
             except (KeyError, IndexError):
                 continue
-            else:
-                image = Image(image_data['width'],
-                        image_data['height'],
-                        image_data['url'],
-                        data['title'],
-                        int(data['score']))
-                images.append(image)
 
         return images
 
@@ -867,8 +900,8 @@ def _read_config_file(desktops):
     def parse_subreddit_tokens(desktop, section):
         try:
             tokens = map(lambda x: x.strip(),
-                    config.get(section, 'subreddits').split(','))
-        except ConfigParser.NoOptionError:
+                         config.get(section, 'subreddits').split(','))
+        except NoOptionError:
             pass
         else:
             if tokens:
@@ -876,22 +909,22 @@ def _read_config_file(desktops):
 
     def parse_imprint_tokens(desktop, section):
         for confname, funcname in (
-                ( 'imprint_position', 'set_position_tokens' ),
-                ( 'imprint_size',     'set_size_tokens'     ),
-                ( 'imprint_font',     'set_font_tokens'     ),
-                ):
+                ('imprint_position', 'set_position_tokens'),
+                ('imprint_size', 'set_size_tokens'),
+                ('imprint_font', 'set_font_tokens'),
+        ):
             try:
                 tokens = map(lambda x: x.strip(),
-                        config.get(section, confname).split(':'))
-            except ConfigParser.NoOptionError:
+                             config.get(section, confname).split(':'))
+            except NoOptionError:
                 pass
             else:
                 if tokens:
                     getattr(desktop.imprint_conf, funcname)(tokens)
 
-    config = ConfigParser.ConfigParser()
+    config = ConfigParser()
     with open(path) as f:
-        config.readfp(f)
+        config.read_file(f)
 
     for desktop in desktops:
         section = 'desktop{0}'.format(desktop.num)
@@ -903,58 +936,58 @@ def _read_config_file(desktops):
     if 'default' in config.sections():
         try:
             set_image_count(config.getint('default', 'image_count'))
-        except ConfigParser.NoOptionError:
+        except NoOptionError:
             pass
         try:
             download_directory = config.get('default', 'download_directory')
-        except ConfigParser.NoOptionError:
+        except NoOptionError:
             pass
         else:
             if download_directory:
                 set_download_directory(download_directory)
         try:
             image_chooser = config.get('default', 'image_chooser')
-        except ConfigParser.NoOptionError:
+        except NoOptionError:
             pass
         else:
             if image_chooser:
                 set_image_chooser(image_chooser)
         try:
             set_image_scaling(config.get('default', 'image_scaling'))
-        except ConfigParser.NoOptionError:
+        except NoOptionError:
             pass
 
 
 def _handle_cli_options(desktops):
     parser = argparse.ArgumentParser(
-            description='set desktop background image from reddit')
+        description='set desktop background image from reddit')
     parser.add_argument('subreddits', metavar='SUBREDDITS', nargs='*',
-            help='a list of subreddits')
+                        help='a list of subreddits')
     parser.add_argument('--desktop', type=int, default=0,
-            help='set background for this desktop'
-            ' (default: sets background for all desktops)')
+                        help='set background for this desktop'
+                             ' (default: sets background for all desktops)')
     parser.add_argument('-v', '--verbose', action='count',
-            help='log to stderr (use -vv for even more info)')
+                        help='log to stderr (use -vv for even more info)')
     parser.add_argument('--image-count', type=int,
-            help="number of images to download (this only downloads the"
-            " images, it doesn't set the background)")
+                        help="number of images to download (this only downloads the"
+                             " images, it doesn't set the background)")
     parser.add_argument('--download-directory',
-            help='directory to use to store images')
+                        help='directory to use to store images')
     parser.add_argument('--what',
-            action='store_true',
-            help='display what images are downloaded for each desktop')
+                        action='store_true',
+                        help='display what images are downloaded for each desktop')
     parser.add_argument('--imprint-position',
-            help='imprint the title in images at this position. horizontal'
-            ' vertical (ex: bottom:left)')
+                        help='imprint the title in images at this position. horizontal'
+                             ' vertical (ex: bottom:left)')
     parser.add_argument('--imprint-size',
-            help='box options for title imprinting.'
-            ' width:margin:padding:transparency')
+                        help='box options for title imprinting.'
+                             ' width:margin:padding:transparency')
     parser.add_argument('--imprint-font',
-            help='font options for title imprinting.'
-            ' filename:size:color')
+                        help='font options for title imprinting.'
+                             ' filename:size:color')
     parser.add_argument('--version',
-            action='version',
-            version=__version__)
+                        action='version',
+                        version=__version__)
 
     args = parser.parse_args()
 
@@ -982,11 +1015,12 @@ def _handle_cli_options(desktops):
 
     return desktops
 
+
 def show_whats_downloaded(desktops):
     for desktop in desktops:
-        print u"Desktop {}".format(desktop.num)
-        for filename in  desktop.downloaded_images:
-            print u"\t{}".format(filename)
+        print("Desktop {}".format(desktop.num))
+        for filename in desktop.downloaded_images:
+            print("\t{}".format(filename))
 
 
 def main():
@@ -999,8 +1033,8 @@ def main():
     desktops = _handle_cli_options(desktops)
 
     if get_what():
-       show_whats_downloaded(desktops)
-       return
+        show_whats_downloaded(desktops)
+        return
 
     image_count = get_image_count()
 
@@ -1019,6 +1053,7 @@ def main():
             paths = desktop.fetch_backgrounds(1)
             if paths:
                 desktop.set_background(paths[0])
+
 
 if __name__ == "__main__":
     main()
