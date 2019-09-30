@@ -826,6 +826,9 @@ class Subreddit(object):
                     imgur_url = data['url']
                     if ImgurWallpaper.is_single_image(imgur_url):
                         image_data = ImgurWallpaper.load_from_api(imgur_url)
+                        if not image_data:
+                            log('URL returns null data : {}'.format(imgur_url))
+                            continue
                         image_data['url'] = image_data['link']
                         image_data['score'] = image_data['views']
 
@@ -838,6 +841,10 @@ class Subreddit(object):
                     else:
                         # Imgur Album is found.
                         for image_data in ImgurWallpaper.load_imgur_album(imgur_url):
+                            if not image_data:
+                                log('URL returns null data : {}'.format(imgur_url))
+                                continue
+
                             image_data['url'] = image_data['link']
                             image_data['score'] = image_data['views']
                             image = Image(image_data['width'],
