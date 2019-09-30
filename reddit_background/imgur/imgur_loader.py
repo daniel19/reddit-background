@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import json
 import requests
-import re
+import os
 
 from importlib_resources import read_text
 
@@ -41,12 +41,14 @@ class ImgurWallpaper(object):
 
     @classmethod
     def _get_imgur_id(cls, url) -> str:
-        regex_compile = re.compile('[^/]+(?=/$|$)')
-        matches = regex_compile.findall(url)
-        if matches:
-            return matches[0]
+        base = os.path.basename(url)
+        if '.' in base:
+            index = base.rfind('.')
+            return base[:index]
         else:
-            return None
+            return base
+        return None
+
 
     @classmethod
     def is_single_image(cls, url: str) -> bool:

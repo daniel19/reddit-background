@@ -485,11 +485,8 @@ class Desktop(object):
         return os.listdir(self.download_directory)
 
     def fetch_backgrounds(self, image_count):
-        images = []
         random_subreddit = random.choice(self.subreddits)
-        for image in random_subreddit.fetch_images():
-            images.append(image)
-
+        images = random_subreddit.fetch_images() 
         chooser_cls = _IMAGE_CHOOSER_CLASSES[get_image_chooser()]
         chooser = chooser_cls(self, images)
         chooser.sort()
@@ -809,6 +806,7 @@ class Subreddit(object):
                          limit=self.limit)
 
         try:
+            log(url)
             response = _urlopen(url)
         except URLOpenError:
             warn("error fetching images from subreddit '{0}',"
