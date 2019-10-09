@@ -17,6 +17,7 @@ setup(
         entry_points={
             'console_scripts': ['reddit_background=reddit_background.reddit_background:main']
         },
-        python_requires='>=3.7', install_requires=['']
+        python_requires='>=3.7', 
+        install_requires=['importlib-resources']
 )
 

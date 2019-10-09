@@ -17,6 +17,8 @@ Prefix: %{_prefix}
 BuildArch: noarch
 Vendor: UNKNOWN <UNKNOWN>
 
+Requires: python3-importlib-metadata
+
 %description
 reddit-background
 =================
