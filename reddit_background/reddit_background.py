@@ -82,7 +82,10 @@ WEIGHT_REDDIT_SCORE = 1.0
 
 def set_verbosity(verbosity):
     global _VERBOSITY
-    _VERBOSITY = verbosity
+    if verbosity:
+        _VERBOSITY = verbosity
+    else:
+        _VERBOSITY = 0
 
 
 def get_verbosity():
