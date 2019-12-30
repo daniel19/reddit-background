@@ -829,33 +829,35 @@ class Subreddit(object):
                     imgur_url = data['url']
                     if ImgurWallpaper.is_single_image(imgur_url):
                         image_data = ImgurWallpaper.load_from_api(imgur_url)
-                        if not image_data:
-                            log('URL returns null data : {}'.format(imgur_url))
-                            continue
-                        image_data['url'] = image_data['link']
-                        image_data['score'] = image_data['views']
-
-                        image = Image(image_data['width'],
-                                      image_data['height'],
-                                      image_data['url'],
-                                      data['title'],
-                                      int(data['score']))
-                        images.append(image)
-                    else:
-                        # Imgur Album is found.
-                        for image_data in ImgurWallpaper.load_imgur_album(imgur_url):
-                            if not image_data:
-                                log('URL returns null data : {}'.format(imgur_url))
-                                continue
-
+                        if image_data:
                             image_data['url'] = image_data['link']
                             image_data['score'] = image_data['views']
+
                             image = Image(image_data['width'],
                                           image_data['height'],
                                           image_data['url'],
                                           data['title'],
                                           int(data['score']))
+                            log('Single Image: {}'.format(image.full_title))
                             images.append(image)
+                        else:
+                            log('URL returns null data : {}'.format(imgur_url))
+                    else:
+                        # Imgur Album is found.
+                        for image_data in ImgurWallpaper.load_imgur_album(imgur_url):
+                            if image_data:
+
+                                image_data['url'] = image_data['link']
+                                image_data['score'] = image_data['views']
+                                image = Image(image_data['width'],
+                                              image_data['height'],
+                                              image_data['url'],
+                                              data['title'],
+                                              int(data['score']))
+                                log('Album Image: {}'.format(image.full_title))
+                                images.append(image)
+                            else:
+                                log('URL returns null data : {}'.format(imgur_url.full_title))
                 else:
                     image_data = data['preview']['images'][0]['source']
                     image = Image(image_data['width'],
@@ -863,9 +865,10 @@ class Subreddit(object):
                                   image_data['url'],
                                   data['title'],
                                   int(data['score']))
+                    log('Reddit Image: {}'.format(image.full_title))
                     images.append(image)
-            except (KeyError, IndexError):
-                continue
+            except Exception as e:
+                log('Error fetching images: {}'.format(e))
 
         return images
 
