@@ -14,6 +14,7 @@ setup(
         long_description=long_desc,
         long_description_content_type='text/markdown',
         packages=find_packages(),
+        data_files=[('/etc/bash_completion.d/', ['reddit_background/etc/reddit_background.bash'])],
         entry_points={
             'console_scripts': ['reddit_background=reddit_background.reddit_background:main']
         },
