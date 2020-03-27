@@ -39,6 +39,9 @@ from urllib.request import URLError
 from urllib.request import urlretrieve
 import urllib.parse as urlparse
 
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import as_completed
+
 from configparser import ConfigParser, NoOptionError
 from reddit_background.imgur.imgur_loader import ImgurWallpaper
 
@@ -836,54 +839,67 @@ class Subreddit(object):
             response.close()
 
         images = []
-        for child in data['data']['children']:
-            data = child['data']
-            try:
-                if 'imgur' in data['url']:
-                    imgur_url = data['url']
-                    if ImgurWallpaper.is_single_image(imgur_url):
-                        image_data = ImgurWallpaper.load_from_api(imgur_url)
+        
+        with ThreadPoolExecutor(max_workers=5) as pool:
+            futures = {pool.submit(self._collect_urls, child['data']): child for child in data['data']['children']}
+            for future in as_completed(futures):
+                try:
+                    data = future.result()
+                    images = [*images, *data]
+                except Exception as e:
+                    log(e)
+        
+        log('Count of images: {}'.format(len(images)))
+        return images
+    
+    def _collect_urls(self, data):
+        images = []
+        try:
+            if 'imgur' in data['url']:
+                imgur_url = data['url']
+                if ImgurWallpaper.is_single_image(imgur_url):
+                    image_data = ImgurWallpaper.load_from_api(imgur_url)
+                    if image_data:
+                        image_data['url'] = image_data['link']
+                        image_data['score'] = image_data['views']
+
+                        image = Image(image_data['width'],
+                                image_data['height'],
+                                image_data['url'],
+                                data['title'],
+                                int(data['score']))
+                        log('Single Image: {}'.format(image.full_title))
+                        images.append(image)
+                    else:
+                        log('URL returns null data : {}'.format(imgur_url))
+                else:
+                    # Imgur Album is found.
+                    for image_data in ImgurWallpaper.load_imgur_album(imgur_url):
                         if image_data:
+
                             image_data['url'] = image_data['link']
                             image_data['score'] = image_data['views']
-
                             image = Image(image_data['width'],
-                                          image_data['height'],
-                                          image_data['url'],
-                                          data['title'],
-                                          int(data['score']))
-                            log('Single Image: {}'.format(image.full_title))
+                                    image_data['height'],
+                                    image_data['url'],
+                                    data['title'],
+                                    int(data['score']))
+                            log('Album Image: {}'.format(image.full_title))
                             images.append(image)
                         else:
-                            log('URL returns null data : {}'.format(imgur_url))
-                    else:
-                        # Imgur Album is found.
-                        for image_data in ImgurWallpaper.load_imgur_album(imgur_url):
-                            if image_data:
-
-                                image_data['url'] = image_data['link']
-                                image_data['score'] = image_data['views']
-                                image = Image(image_data['width'],
-                                              image_data['height'],
-                                              image_data['url'],
-                                              data['title'],
-                                              int(data['score']))
-                                log('Album Image: {}'.format(image.full_title))
-                                images.append(image)
-                            else:
-                                log('URL returns null data : {}'.format(imgur_url.full_title))
-                else:
-                    image_data = data['preview']['images'][0]['source']
-                    image = Image(image_data['width'],
-                                  image_data['height'],
-                                  image_data['url'],
-                                  data['title'],
-                                  int(data['score']))
-                    log('Reddit Image: {}'.format(image.full_title))
-                    images.append(image)
-            except Exception as e:
-                log('Error fetching images: {}'.format(e))
-
+                            log('URL returns null data : {}'.format(imgur_url.full_title))
+            else:
+                image_data = data['preview']['images'][0]['source']
+                image = Image(image_data['width'],
+                        image_data['height'],
+                        image_data['url'],
+                        data['title'],
+                        int(data['score']))
+                log('Reddit Image: {}'.format(image.full_title))
+                images.append(image)
+        except Exception as e:
+            log('Error fetching images: {}'.format(e))
+        
         return images
 
     @classmethod
