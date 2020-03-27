@@ -207,6 +207,9 @@ class DarwinHandler(OSHandler):
 class LinuxHandler(OSHandler):
     def set_background(self, path, **kwargs):
         bg_setting = kwargs['bg_setting']
+        if bg_setting not in ['fill', 'max', 'tile', 'center', 'scale']:
+            bg_setting = 'scale'
+
         output = subprocess.Popen(['feh --bg-{} \'{}\''.format(bg_setting, path)], shell=True,
                                   stdout=subprocess.PIPE).communicate()
         if (output[1]):
