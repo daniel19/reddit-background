@@ -8,7 +8,7 @@ __reddit_background(){
     
     case "$subcommand" in
         -* | --)
-            COMPREPLY=( $(compgen -W '--image-count --desktop --what -v --version -h --help' -- $subcommand) ) ;;
+            COMPREPLY=( $(compgen -W '--background-setting --image-count --desktop --what -v --version -h --help' -- $subcommand) ) ;;
     esac
     return 0
 }

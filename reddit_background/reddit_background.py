@@ -39,6 +39,9 @@ from urllib.request import URLError
 from urllib.request import urlretrieve
 import urllib.parse as urlparse
 
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import as_completed
+
 from configparser import ConfigParser, NoOptionError
 from reddit_background.imgur.imgur_loader import ImgurWallpaper
 
@@ -139,6 +142,15 @@ def get_image_scaling():
     return _IMAGE_SCALING
 
 
+def set_background_setting(setting):
+    global _BG_SETTING
+    _BG_SETTING = setting
+
+
+def get_background_setting():
+    return _BG_SETTING
+
+
 def _safe_makedirs(name, mode=0o777):
     if not os.path.exists(name):
         os.makedirs(name, mode=mode)
@@ -197,7 +209,11 @@ class DarwinHandler(OSHandler):
 
 class LinuxHandler(OSHandler):
     def set_background(self, path, **kwargs):
-        output = subprocess.Popen(['feh --bg-scale \'{}\''.format(path)], shell=True,
+        bg_setting = kwargs['bg_setting']
+        if bg_setting not in ['fill', 'max', 'tile', 'center', 'scale']:
+            bg_setting = 'scale'
+
+        output = subprocess.Popen(['feh --bg-{} \'{}\''.format(bg_setting, path)], shell=True,
                                   stdout=subprocess.PIPE).communicate()
         if (output[1]):
             warn(u"unable to set background to '{}'".format(path))
@@ -461,6 +477,7 @@ class Desktop(object):
         self.height = height
         self.subreddit_tokens = subreddit_tokens or []
         self.imprint_conf = ImprintConf()
+        self.bg_setting = 'fill'
 
         # NOTE: we need to get the download-images at instantiation time and
         # cache the results b/c we'll later clear the download directory
@@ -522,7 +539,7 @@ class Desktop(object):
 
     def set_background(self, path):
         log(u'Setting background for desktop {0}'.format(self.num))
-        _OS_HANDLER.set_background(path, num=self.num)
+        _OS_HANDLER.set_background(path, num=self.num, bg_setting=self.bg_setting)
 
 
 def _get_desktops_with_defaults():
@@ -822,54 +839,67 @@ class Subreddit(object):
             response.close()
 
         images = []
-        for child in data['data']['children']:
-            data = child['data']
-            try:
-                if 'imgur' in data['url']:
-                    imgur_url = data['url']
-                    if ImgurWallpaper.is_single_image(imgur_url):
-                        image_data = ImgurWallpaper.load_from_api(imgur_url)
+        
+        with ThreadPoolExecutor(max_workers=5) as pool:
+            futures = {pool.submit(self._collect_urls, child['data']): child for child in data['data']['children']}
+            for future in as_completed(futures):
+                try:
+                    data = future.result()
+                    images = [*images, *data]
+                except Exception as e:
+                    log(e)
+        
+        log('Count of images: {}'.format(len(images)))
+        return images
+    
+    def _collect_urls(self, data):
+        images = []
+        try:
+            if 'imgur' in data['url']:
+                imgur_url = data['url']
+                if ImgurWallpaper.is_single_image(imgur_url):
+                    image_data = ImgurWallpaper.load_from_api(imgur_url)
+                    if image_data:
+                        image_data['url'] = image_data['link']
+                        image_data['score'] = image_data['views']
+
+                        image = Image(image_data['width'],
+                                image_data['height'],
+                                image_data['url'],
+                                data['title'],
+                                int(data['score']))
+                        log('Single Image: {}'.format(image.full_title))
+                        images.append(image)
+                    else:
+                        log('URL returns null data : {}'.format(imgur_url))
+                else:
+                    # Imgur Album is found.
+                    for image_data in ImgurWallpaper.load_imgur_album(imgur_url):
                         if image_data:
+
                             image_data['url'] = image_data['link']
                             image_data['score'] = image_data['views']
-
                             image = Image(image_data['width'],
-                                          image_data['height'],
-                                          image_data['url'],
-                                          data['title'],
-                                          int(data['score']))
-                            log('Single Image: {}'.format(image.full_title))
+                                    image_data['height'],
+                                    image_data['url'],
+                                    data['title'],
+                                    int(data['score']))
+                            log('Album Image: {}'.format(image.full_title))
                             images.append(image)
                         else:
-                            log('URL returns null data : {}'.format(imgur_url))
-                    else:
-                        # Imgur Album is found.
-                        for image_data in ImgurWallpaper.load_imgur_album(imgur_url):
-                            if image_data:
-
-                                image_data['url'] = image_data['link']
-                                image_data['score'] = image_data['views']
-                                image = Image(image_data['width'],
-                                              image_data['height'],
-                                              image_data['url'],
-                                              data['title'],
-                                              int(data['score']))
-                                log('Album Image: {}'.format(image.full_title))
-                                images.append(image)
-                            else:
-                                log('URL returns null data : {}'.format(imgur_url.full_title))
-                else:
-                    image_data = data['preview']['images'][0]['source']
-                    image = Image(image_data['width'],
-                                  image_data['height'],
-                                  image_data['url'],
-                                  data['title'],
-                                  int(data['score']))
-                    log('Reddit Image: {}'.format(image.full_title))
-                    images.append(image)
-            except Exception as e:
-                log('Error fetching images: {}'.format(e))
-
+                            log('URL returns null data : {}'.format(imgur_url.full_title))
+            else:
+                image_data = data['preview']['images'][0]['source']
+                image = Image(image_data['width'],
+                        image_data['height'],
+                        image_data['url'],
+                        data['title'],
+                        int(data['score']))
+                log('Reddit Image: {}'.format(image.full_title))
+                images.append(image)
+        except Exception as e:
+            log('Error fetching images: {}'.format(e))
+        
         return images
 
     @classmethod
@@ -967,6 +997,13 @@ def _read_config_file(desktops):
             set_image_scaling(config.get('default', 'image_scaling'))
         except NoOptionError:
             pass
+        try:
+            set_background_setting(config.get('default', 'background_setting'))
+        except NoOptionError:
+            pass
+        else:
+            desktop.bg_setting = get_background_setting()
+
 
 
 def _handle_cli_options(desktops):
@@ -999,6 +1036,8 @@ def _handle_cli_options(desktops):
     parser.add_argument('--version',
                         action='version',
                         version=__version__)
+    parser.add_argument('--background-setting',
+                        help='Set the desktop background setting.\nSee feh man page for options.')
 
     args = parser.parse_args()
 
@@ -1010,6 +1049,9 @@ def _handle_cli_options(desktops):
 
     if args.download_directory:
         set_download_directory(args.download_directory)
+
+    if args.background_setting:
+        set_background_setting(args.background_setting)
 
     if args.desktop:
         desktops = [d for d in desktops if d.num == args.desktop]
@@ -1023,6 +1065,7 @@ def _handle_cli_options(desktops):
             desktop.imprint_conf.set_size_tokens(args.imprint_size.split(':'))
         if args.imprint_font:
             desktop.imprint_conf.set_font_tokens(args.imprint_font.split(':'))
+        desktop.bg_setting = get_background_setting()
 
     return desktops
 

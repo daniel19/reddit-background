@@ -7,7 +7,7 @@
 Summary: Set your macOS or Linux desktop background to images pulled from [Reddit](https://reddit.com)
 
 Name: %{name}
-Version: %{version}
+Version: 0.0.3
 Release: %{release}
 Source0: %{name}-%{unmangled_version}.tar.gz
 License: UNKNOWN
