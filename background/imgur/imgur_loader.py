@@ -7,7 +7,7 @@ from importlib_resources import read_text
 
 
 class ImgurWallpaper(object):
-    __imgur_credentials = json.loads(read_text('reddit_background.resources', 'credentials.json'))
+    __imgur_credentials = json.loads(read_text('background.resources', 'credentials.json'))
 
     def __init_(self):
         raise NotImplementedError
