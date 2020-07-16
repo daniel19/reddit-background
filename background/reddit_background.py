@@ -205,6 +205,10 @@ class DarwinHandler(OSHandler):
         p = subprocess.Popen(["/usr/sbin/system_profiler", "SPDisplaysDataType"],
                              stdout=subprocess.PIPE)
         (output, err) = p.communicate()
+
+        if err:
+            log(err)
+
         return re.findall(RE_RESOLUTION_DISPLAYS, output)
 
 
@@ -431,7 +435,7 @@ class ImprintConf(object):
             try:
                 val = conv(val)
             except:
-                self.warn(errormsg % val)
+                log(errormsg % val)
                 return default_tokens[pos]
         return val
 
@@ -487,7 +491,7 @@ class Desktop(object):
         # self.downloaded_images = self._get_downloaded_images()
 
     def __repr__(self):
-        return '<Desktop {}, {}, {}, {}>'.format(self.num, self.width, self.height, self.subreddits, self.imprint_conf)
+        return '<Desktop {}, {}, {}, {}, {}>'.format(self.num, self.width, self.height, self.subreddits, self.imprint_conf)
 
     @property
     def subreddits(self):
@@ -527,31 +531,48 @@ class Desktop(object):
         
         if not image.filename in self.downloaded_images.keys():
             new_path = '{}/{}'.format(self.download_directory, image.filename)
+            if not os.path.exists(self.download_directory):
+                os.mkdir(self.download_directory)
+
             shutil.move(path, new_path)
             return (new_path, False)
-
+        
         hash_md5 = self.__get_hash(path)
-        digest_to_comapre = self.downloaded_images[image.filename]
+        duplicate_not_found = False
+        image_numbers = []
 
-        if not hash_md5 == digest_to_comapre:
-            log('{} does not equal {} for name {}'.format(hash_md5, digest_to_comapre, image.filename),  level=2)
-            name, ext = os.path.splitext(image.filename)
+        image_title, ext = os.path.splitext(image.filename)
+        for key_name in self.downloaded_images.keys():
+            key_title, _ = os.path.splitext(key_name)
+            if image_title in key_title:
+                digest_to_comapre = self.downloaded_images[key_name]
+                if not hash_md5 == digest_to_comapre:
+                    log('{} does not equal {} for name {}'.format(hash_md5, digest_to_comapre, image.filename),  level=2)
+                    duplicate_not_found = True
+                    rgx = re.match('.*?([0-9]+)$', key_title)
+                    if rgx:
+                        image_numbers.append(int(rgx.group(1)))
+                    else:
+                        image_numbers.append(0)
+
+        
+        image_numbers.sort()
+        if duplicate_not_found:
+            digit = image_numbers[-1]
             new_filename = ''
-            if name[-1].isdigit():
-                digit = int(name[-1]) + 1
-                new_filename = '{}-{}{}'.format(name, str(digit), ext)
+            if digit == 0:
+                new_filename = '{}1{}'.format(image_title, ext)
             else:
-                new_filename = '{}-{}{}'.format(name, '1', ext)
+                digit += 1
+                new_filename = '{}{}{}'.format(image_title, digit, ext)
             
             new_path = '{}/{}'.format(self.download_directory, new_filename) 
             shutil.move(path, new_path)
             return (new_path, True)
         
-        new_path = '{}/{}'.format(self.download_directory, image.filename)
-        shutil.move(path, new_path)
-        return (new_path, False)
+        return ('', False)
 
-    
+
     def fetch_backgrounds(self, image_count):
         random_subreddit = random.choice(self.subreddits)
         images = random_subreddit.fetch_images() 
@@ -628,6 +649,9 @@ def _download_to_directory(url, dirname, filename):
 
     log(u"Downloading '{0}' to '{1}'".format(url, path))
     urlretrieve(url, path)
+    
+    op=open(path)
+    op.close()
     return path
 
 
