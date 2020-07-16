@@ -20,30 +20,31 @@ AUTHOR
 
     Rick Harris <rconradharris@gmail.com>
 """
+
 import argparse
 import datetime
 import glob
 import json
 import math
+import hashlib
 import operator
 import os
 import random
 import re
-import shutil
 import socket
 import subprocess
+import shutil
 import sys
-from urllib.request import build_opener
-from urllib.request import HTTPError
-from urllib.request import URLError
-from urllib.request import urlretrieve
 import urllib.parse as urlparse
 
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import as_completed
-
 from configparser import ConfigParser, NoOptionError
-from reddit_background.imgur.imgur_loader import ImgurWallpaper
+from background.imgur.imgur_loader import ImgurWallpaper
+from urllib.request import HTTPError
+from urllib.request import URLError
+from urllib.request import build_opener
+from urllib.request import urlretrieve
 
 # since PIL is not in the standard library, using a try so it isn't necessary for the script
 try:
@@ -204,6 +205,10 @@ class DarwinHandler(OSHandler):
         p = subprocess.Popen(["/usr/sbin/system_profiler", "SPDisplaysDataType"],
                              stdout=subprocess.PIPE)
         (output, err) = p.communicate()
+
+        if err:
+            log(err)
+
         return re.findall(RE_RESOLUTION_DISPLAYS, output)
 
 
@@ -430,7 +435,7 @@ class ImprintConf(object):
             try:
                 val = conv(val)
             except:
-                self.warn(errormsg % val)
+                log(errormsg % val)
                 return default_tokens[pos]
         return val
 
@@ -483,15 +488,19 @@ class Desktop(object):
         # cache the results b/c we'll later clear the download directory
         # before downloading the new images, meaning we can no longer tell
         # what's already been downloaded
-        self.downloaded_images = self._get_downloaded_images()
+        # self.downloaded_images = self._get_downloaded_images()
 
     def __repr__(self):
-        return '<Desktop {}, {}, {}, {}>'.format(self.num, self.width, self.height, self.subreddits, self.imprint_conf)
+        return '<Desktop {}, {}, {}, {}, {}>'.format(self.num, self.width, self.height, self.subreddits, self.imprint_conf)
 
     @property
     def subreddits(self):
         return [Subreddit.create_from_token(self, t)
                 for t in self.subreddit_tokens]
+    
+    @property
+    def downloaded_images(self):
+        return self._get_downloaded_images()
 
     @property
     def download_directory(self):
@@ -500,9 +509,69 @@ class Desktop(object):
         return os.path.join(get_download_directory(), subdir)
 
     def _get_downloaded_images(self):
+        image_hash = {}
         if not os.path.exists(self.download_directory):
-            return []
-        return os.listdir(self.download_directory)
+            return {}
+        
+        for filename in os.listdir(self.download_directory):
+            full_path = os.path.join(self.download_directory, filename)
+            image_hash[filename] = self.__get_hash(full_path)
+
+        return image_hash
+
+    def __get_hash(self, full_image_path):
+        with open(full_image_path, 'rb') as f:
+            return hashlib.md5(f.read()).hexdigest()
+
+    def _images_different(self, image):
+        """
+        """
+        # Download to temp directory.
+        path = _download_to_directory(image.url, '/tmp', image.filename)
+        
+        if not image.filename in self.downloaded_images.keys():
+            new_path = '{}/{}'.format(self.download_directory, image.filename)
+            if not os.path.exists(self.download_directory):
+                os.mkdir(self.download_directory)
+
+            shutil.move(path, new_path)
+            return (new_path, False)
+        
+        hash_md5 = self.__get_hash(path)
+        duplicate_not_found = False
+        image_numbers = []
+
+        image_title, ext = os.path.splitext(image.filename)
+        for key_name in self.downloaded_images.keys():
+            key_title, _ = os.path.splitext(key_name)
+            if image_title in key_title:
+                digest_to_comapre = self.downloaded_images[key_name]
+                if not hash_md5 == digest_to_comapre:
+                    log('{} does not equal {} for name {}'.format(hash_md5, digest_to_comapre, image.filename),  level=2)
+                    duplicate_not_found = True
+                    rgx = re.match('.*?([0-9]+)$', key_title)
+                    if rgx:
+                        image_numbers.append(int(rgx.group(1)))
+                    else:
+                        image_numbers.append(0)
+
+        
+        image_numbers.sort()
+        if duplicate_not_found:
+            digit = image_numbers[-1]
+            new_filename = ''
+            if digit == 0:
+                new_filename = '{}1{}'.format(image_title, ext)
+            else:
+                digit += 1
+                new_filename = '{}{}{}'.format(image_title, digit, ext)
+            
+            new_path = '{}/{}'.format(self.download_directory, new_filename) 
+            shutil.move(path, new_path)
+            return (new_path, True)
+        
+        return ('', False)
+
 
     def fetch_backgrounds(self, image_count):
         random_subreddit = random.choice(self.subreddits)
@@ -514,17 +583,16 @@ class Desktop(object):
         log(u'Number of images to download: {0}'.format(image_count))
         paths = []
         count = 0
+
         for image in images:
             if count >= image_count:
                 break
-            # Don't re-use an image that's already downloaded
-            if image.filename in self.downloaded_images:
-                log(u"'{}' already downloaded, skipping...".format(
-                    image.filename), level=2)
-                continue
             try:
-                path = _download_to_directory(
-                    image.url, self.download_directory, image.filename)
+                # Don't re-use an image that's already downloaded
+                path, result  = self._images_different(image)
+                if not result:
+                    log(u"'{}' already downloaded, skipping...".format(
+                        image.filename), level=2)
             except URLOpenError:
                 warn(u"unable to download '{}', skipping...".format(image.url))
                 continue  # Try next image...
@@ -581,6 +649,9 @@ def _download_to_directory(url, dirname, filename):
 
     log(u"Downloading '{0}' to '{1}'".format(url, path))
     urlretrieve(url, path)
+    
+    op=open(path)
+    op.close()
     return path
 
 
@@ -638,7 +709,8 @@ class Image(object):
                  aspect_ratio_score=0.0,
                  resolution_score=0.0,
                  jitter_score=0.0,
-                 reddit_score=0.0):
+                 reddit_score=0.0,
+                 image_id=None):
         self.width = width
         self.height = height
         self._url = url
@@ -649,6 +721,7 @@ class Image(object):
         self.resolution_score = resolution_score
         self.jitter_score = jitter_score
         self.reddit_score = reddit_score
+        self.image_id = image_id
 
     @property
     def url(self):
@@ -847,7 +920,7 @@ class Subreddit(object):
                     data = future.result()
                     images = [*images, *data]
                 except Exception as e:
-                    log(e)
+                    log('Failed to load data {}'.format(e))
         
         log('Count of images: {}'.format(len(images)))
         return images
@@ -867,7 +940,8 @@ class Subreddit(object):
                                 image_data['height'],
                                 image_data['url'],
                                 data['title'],
-                                int(data['score']))
+                                int(data['score']),
+                                image_id=image_data['id'])
                         log('Single Image: {}'.format(image.full_title))
                         images.append(image)
                     else:
@@ -876,14 +950,14 @@ class Subreddit(object):
                     # Imgur Album is found.
                     for image_data in ImgurWallpaper.load_imgur_album(imgur_url):
                         if image_data:
-
                             image_data['url'] = image_data['link']
                             image_data['score'] = image_data['views']
                             image = Image(image_data['width'],
                                     image_data['height'],
                                     image_data['url'],
                                     data['title'],
-                                    int(data['score']))
+                                    int(data['score']),
+                                image_id=image_data['id'])
                             log('Album Image: {}'.format(image.full_title))
                             images.append(image)
                         else:
@@ -1073,7 +1147,7 @@ def _handle_cli_options(desktops):
 def show_whats_downloaded(desktops):
     for desktop in desktops:
         print("Desktop {}".format(desktop.num))
-        for filename in desktop.downloaded_images:
+        for filename in desktop.downloaded_images.keys():
             print("\t{}".format(filename))
 
 

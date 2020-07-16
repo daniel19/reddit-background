@@ -9,14 +9,14 @@ with open('README.md', 'r') as f:
 
 setup(
         name='reddit-background',
-        version='0.1.0',
+        version='0.2.0',
         description=short,
         long_description=long_desc,
         long_description_content_type='text/markdown',
         packages=find_packages(),
         data_files=[('/etc/bash_completion.d/', ['reddit_background/etc/reddit_background.bash'])],
         entry_points={
-            'console_scripts': ['reddit_background=reddit_background.reddit_background:main']
+            'console_scripts': ['reddit_background=background.reddit_background:main']
         },
         python_requires='>=3', 
         install_requires=['importlib-resources']
