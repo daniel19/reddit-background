@@ -9,7 +9,7 @@ with open('README.md', 'r') as f:
 
 setup(
         name='reddit-background',
-        version='0.1.0',
+        version='0.2.0',
         description=short,
         long_description=long_desc,
         long_description_content_type='text/markdown',
