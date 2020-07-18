@@ -23,17 +23,18 @@ AUTHOR
 
 import argparse
 import datetime
+import fontconfig
 import glob
+import hashlib
 import json
 import math
-import hashlib
 import operator
 import os
 import random
 import re
+import shutil
 import socket
 import subprocess
-import shutil
 import sys
 import urllib.parse as urlparse
 
@@ -802,13 +803,15 @@ class Image(object):
 
     def _get_imprint_font(self, desktop, default='/usr/share/wine/fonts/arial.ttf'):
         conf = desktop.imprint_conf
+        fonts = fontconfig.query(lang='en')
         try:
-            font = pilImageFont.truetype(conf.font_filename, conf.font_size)
+            for f in fonts:
+                if conf.font_filename in f:
+                    break 
+
+            font = pilImageFont.truetype(f, conf.font_size)
         except IOError:
-            warn(u"Cannot open font file `%s`.  This must be specified as the"
-                 u" font filename, not the font name fromn system dialogs"
-                 u" (although the two are often the same). Trying `%s.ttf`"
-                 u" instead." % conf.font_filename)
+            warn("Cannot open font file {}.".format(conf.font_filename))
             font = pilImageFont.truetype(default, conf.font_size)
         return font
 
