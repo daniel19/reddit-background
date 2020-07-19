@@ -1,6 +1,7 @@
 *.swp
 *.pyc
 credentials.json
+.vscode
 
 #virutalenv
 env/
