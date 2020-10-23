@@ -46,6 +46,7 @@ from urllib.request import HTTPError
 from urllib.request import URLError
 from urllib.request import build_opener
 from urllib.request import urlretrieve
+from urllib.error import HTTPError
 
 # since PIL is not in the standard library, using a try so it isn't necessary for the script
 try:
@@ -224,8 +225,11 @@ class LinuxHandler(OSHandler):
         if (output[1]):
             warn(u"unable to set background to '{}'".format(path))
         else:
-            lightdm_process = subprocess.Popen(['sudo cp \'{}\' /usr/share/backgrounds/default.png'.format(path)],
+            stdout, stderr = subprocess.Popen(['sudo cp \'{}\' /usr/share/backgrounds/default.png'.format(path)],
                                                shell=True, stdout=subprocess.PIPE).communicate()
+            if stderr:
+                warn(stderr)
+            log(stdout)
 
     def get_desktop_resolutions(self):
         # source: http://stackoverflow.com/questions/8705814/get-display-count-and-
@@ -582,7 +586,7 @@ class Desktop(object):
         chooser.sort()
 
         log(u'Number of images to download: {0}'.format(image_count))
-        paths = []
+        result_images = []
         count = 0
 
         for image in images:
@@ -591,6 +595,7 @@ class Desktop(object):
             try:
                 # Don't re-use an image that's already downloaded
                 path, result  = self._images_different(image)
+                image.file_path = path
                 if not result:
                     log(u"'{}' already downloaded, skipping...".format(
                         image.filename), level=2)
@@ -598,17 +603,17 @@ class Desktop(object):
                 warn(u"unable to download '{}', skipping...".format(image.url))
                 continue  # Try next image...
             else:
-                paths.append(path)
+                result_images.append(image)
                 if get_image_scaling() == 'fit':
                     image.fit_to_desktop(self)
                 if self.imprint_conf.position_tokens:
                     image.imprint_title(self)
             count += 1
-        return paths
+        return result_images 
 
-    def set_background(self, path):
+    def set_background(self, image):
         log(u'Setting background for desktop {0}'.format(self.num))
-        _OS_HANDLER.set_background(path, num=self.num, bg_setting=self.bg_setting)
+        _OS_HANDLER.set_background(image.file_path, num=self.num, bg_setting=self.bg_setting)
 
 
 def _get_desktops_with_defaults():
@@ -649,8 +654,11 @@ def _download_to_directory(url, dirname, filename):
     path = os.path.join(dirname, filename)
 
     log(u"Downloading '{0}' to '{1}'".format(url, path))
-    urlretrieve(url, path)
-    
+    try:
+        urlretrieve(url, path)
+    except HTTPError as e:
+        log(e)
+
     op=open(path)
     op.close()
     return path
@@ -723,6 +731,7 @@ class Image(object):
         self.jitter_score = jitter_score
         self.reddit_score = reddit_score
         self.image_id = image_id
+        self.file_path = None
 
     @property
     def url(self):
@@ -761,7 +770,12 @@ class Image(object):
 
     def fit_to_desktop(self, desktop):
         self._ensure_pil_available('fit')
-        img = pilImage.open(os.path.join(desktop.download_directory, self.filename))
+        if self.file_path:
+            img = pilImage.open(self.file_path)
+        else:
+            img = pilImage.open(os.path.join(desktop.download_directory, self.filename))
+
+
         image_ratio = float(img.width) / float(img.height)
         desktop_ratio = float(desktop.width) / float(desktop.height)
         if image_ratio == desktop_ratio:
@@ -775,7 +789,10 @@ class Image(object):
         canvas.paste(img, (max(0, int((desktop.width - img.width) / 2.0)),
                            max(0, int((desktop.height - img.height) / 2.0))))
         img = canvas
-        img.save(os.path.join(desktop.download_directory, self.filename),
+        if self.file_path:
+            img.save(self.file_path, "JPEG", quality=85)
+        else:
+            img.save(os.path.join(desktop.download_directory, self.filename),
                  "JPEG", quality=85)
         self.width = img.width
         self.height = img.height
@@ -786,7 +803,6 @@ class Image(object):
         """
         lines = []
         for tl in text.splitlines():
-            start = 0
             curparts = []
             for part in (t for t in tl.split() if t):
                 curparts.append(part)
@@ -1154,7 +1170,7 @@ def show_whats_downloaded(desktops):
             print("\t{}".format(filename))
 
 
-def main():
+def get_desktop_config():
     global _OS_HANDLER
     _OS_HANDLER = OSHandler.get_handler()
 
@@ -1162,6 +1178,10 @@ def main():
     desktops = _get_desktops_with_defaults()
     _read_config_file(desktops)
     desktops = _handle_cli_options(desktops)
+    return desktops
+
+def main():
+    desktops = get_desktop_config()
 
     if get_what():
         show_whats_downloaded(desktops)
@@ -1181,9 +1201,9 @@ def main():
         else:
             # Set-background mode (download the best image, and set the
             # background ourselves)
-            paths = desktop.fetch_backgrounds(1)
-            if paths:
-                desktop.set_background(paths[0])
+            images = desktop.fetch_backgrounds(1)
+            if images:
+                desktop.set_background(images[0])
 
 
 if __name__ == "__main__":
