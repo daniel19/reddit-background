@@ -713,7 +713,7 @@ def slugify(value):
 class Image(object):
     TITLE_MAX_LENGTH = 64
 
-    def __init__(self, width, height, url, title, raw_reddit_score,
+    def __init__(self, width, height, url, thumbnail_url, title, raw_reddit_score,
                  score=0.0,
                  aspect_ratio_score=0.0,
                  resolution_score=0.0,
@@ -723,6 +723,7 @@ class Image(object):
         self.width = width
         self.height = height
         self._url = url
+        self._thumbnail_url = thumbnail_url
         self.title = title
         self.raw_reddit_score = raw_reddit_score
         self.score = score
@@ -736,6 +737,10 @@ class Image(object):
     @property
     def url(self):
         return self._url.replace('amp;', '')
+
+    @property
+    def thumbnail_url(self):
+        return self._thumbnail_url.replace('amp;', '')
 
     @property
     def display_title(self):
@@ -958,6 +963,7 @@ class Subreddit(object):
                         image = Image(image_data['width'],
                                 image_data['height'],
                                 image_data['url'],
+                                image_data['thumbnail_link'],
                                 data['title'],
                                 int(data['score']),
                                 image_id=image_data['id'])
@@ -974,6 +980,7 @@ class Subreddit(object):
                             image = Image(image_data['width'],
                                     image_data['height'],
                                     image_data['url'],
+                                    image_data['thumbnail_link'],
                                     data['title'],
                                     int(data['score']),
                                 image_id=image_data['id'])
@@ -986,6 +993,7 @@ class Subreddit(object):
                 image = Image(image_data['width'],
                         image_data['height'],
                         image_data['url'],
+                        data['thumbnail'],
                         data['title'],
                         int(data['score']))
                 log('Reddit Image: {}'.format(image.full_title))

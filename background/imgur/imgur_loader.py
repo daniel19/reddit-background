@@ -28,6 +28,8 @@ class ImgurWallpaper(object):
         json_dict = ImgurWallpaper.request_from_api(url, 'album/')
         if json_dict and json_dict['success']:
             for dicts in json_dict['data']['images']:
+                image_link = dicts['link']
+                dicts['thumbnail_link'] = cls._get_thumbnail_link(image_link)
                 result.append(dicts)
 
         return result
@@ -36,8 +38,22 @@ class ImgurWallpaper(object):
     def load_from_api(cls, url: str) -> dict:
         json_dict = ImgurWallpaper.request_from_api(url, 'image/')
         if json_dict and json_dict['success']:
-            return json_dict['data']
+            res = json_dict['data']
+            res['thumbnail_link'] = cls._get_thumbnail_link(url)
+            return res
         return None
+
+    @classmethod
+    def _get_thumbnail_link(cls, url):
+        return '{}{}h.{}'.format(cls._get_baselink(url), cls._get_imgur_ext(url), cls._get_imgur_id(url))
+
+    @classmethod
+    def _get_imgur_ext(cls, url):
+        return os.path.splitext(url)[1]
+
+    @classmethod
+    def _get_baselink(cls, url):
+        return url[url.find(os.path.basename(url))]
 
     @classmethod
     def _get_imgur_id(cls, url) -> str:
