@@ -19,7 +19,7 @@ setup(
             'console_scripts': ['reddit_background=background.reddit_background:main',
                                 'reddit_gui=background.gui.__main__:main',]
         },
-        python_requires='>=3', 
-        install_requires=['importlib-resources']
+        python_requires='>=3',
+        install_requires=['importlib-resources', 'i3_pywal']
 )
 

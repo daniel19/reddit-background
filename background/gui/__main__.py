@@ -27,6 +27,7 @@ from gi.repository import GdkPixbuf
 
 from  PIL import Image as pilImage
 
+from i3_pywal.main import wal
 
 class SubredditModel():
     """
@@ -123,7 +124,9 @@ class RedditImageView(Gtk.EventBox):
         self.stream.load_contents_async(None, self._set_image_data)
 
     def on_pressed(self, widget, data):
-        print('{} was clicked'.format(self.image.url))
+        path = self.model.load_image(self.image)
+        wal(image_path=path, manual=True)
+        # TODO:Add some way to pause gui until wal is finished.
 
 
 class ImageWindow(Gtk.Window):
@@ -167,7 +170,6 @@ class ImageWindow(Gtk.Window):
             self.flowbox.add(reddit_imageview)
 
         self.set_title('{} - {}'.format('Subreddit Images', self.model.subreddit_title))
-        print(len(self.flowbox.get_children()))
         self.flowbox.show_all()
         
 
