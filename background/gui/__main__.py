@@ -1,7 +1,6 @@
 from gi import require_version
 require_version("Gtk", "3.0")
 
-import array
 import cairo
 import io
 import numpy
@@ -9,11 +8,6 @@ import os
 import random
 import requests
 import shutil  
-import sys
-import tempfile
-import threading
-import traceback
-import uuid
 
 from background.reddit_background import Image
 from background.reddit_background import get_desktop_config
@@ -93,7 +87,6 @@ class RedditImageView(Gtk.EventBox):
 
     def _set_image_data(self, gdaemonfile, result):
         try:
-            filename = uuid.uuid4()
             _, data, _ = self.stream.load_contents_finish(result)
 
             pil: pilImage = pilImage.open(io.BytesIO(data))
@@ -107,14 +100,14 @@ class RedditImageView(Gtk.EventBox):
                 r, g, b, a = pil.split()
                 pil = pilImage.merge('RGBA', (b, g, r, a))
             
-            size_val = 400
+            size_val = 650
             size = (size_val, size_val)
             pil = pil.resize(size)
             
             arr = numpy.array(pil)
             cai_height, cai_width, _ = arr.shape
 
-            surface = cairo.ImageSurface.create_for_data(arr, c_format, cai_height, cai_width)
+            surface = cairo.ImageSurface.create_for_data(arr, c_format, pil.height, pil.width)
             GLib.idle_add(self.image_view.set_from_surface, surface)
         except Exception as e:
             print(e)
@@ -150,12 +143,14 @@ class ImageWindow(Gtk.Window):
         self.flowbox = Gtk.FlowBox()
         self.flowbox.set_valign(Gtk.Align.BASELINE)
         self.flowbox.set_max_children_per_line(30)
-        
+        self.flowbox.set_column_spacing(0)
+        self.flowbox.set_row_spacing(0)
+
         refresh_button = Gtk.Button.new_with_label('REFRESH')
         refresh_button.connect('clicked', self.on_click_refresh)
 
         scroll_view.add(self.flowbox)
-        
+
         grid.add(scroll_view)
         grid.add(refresh_button)
 
@@ -164,7 +159,7 @@ class ImageWindow(Gtk.Window):
     def on_click_refresh(self, button):
         for child in self.flowbox.get_children():
             Gtk.Widget.destroy(child)
-         
+
         for image in self.model.get_images(): 
             reddit_imageview = RedditImageView(self.model, image)
             self.flowbox.add(reddit_imageview)
