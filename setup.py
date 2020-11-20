@@ -16,7 +16,8 @@ setup(
         packages=find_packages(),
         data_files=[('/etc/bash_completion.d/', ['background/etc/reddit_background.bash'])],
         entry_points={
-            'console_scripts': ['reddit_background=background.reddit_background:main']
+            'console_scripts': ['reddit_background=background.reddit_background:main',
+                                'reddit_gui=background.gui.__main__:main',]
         },
         python_requires='>=3', 
         install_requires=['importlib-resources']

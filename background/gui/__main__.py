@@ -88,29 +88,35 @@ class RedditImageView(Gtk.EventBox):
         self.add(self.image_view)
 
         self.connect('button_press_event', self.on_pressed)
-        self.load_image(self.image.thumbnail_url)
-
-    def __str__(self):
-        pass
+        self.load_image(self.image.url)
 
     def _set_image_data(self, gdaemonfile, result):
         try:
             filename = uuid.uuid4()
-            data = self.stream.load_contents_finish(result)[1]
+            _, data, _ = self.stream.load_contents_finish(result)
 
-            pil= pilImage.open(io.BytesIO(data))
-            size_val = 200
-            size = (size_val, size_val) 
+            pil: pilImage = pilImage.open(io.BytesIO(data))
+            c_format = cairo.FORMAT_ARGB32
+            
+            if pil.mode == 'RGB':
+                r, g, b = pil.split()
+                pil = pilImage.merge("RGB", (b, g, r))
+                pil.putalpha(256)
+            elif pil.mode == 'RGBA':
+                r, g, b, a = pil.split()
+                pil = pilImage.merge('RGBA', (b, g, r, a))
+            
+            size_val = 400
+            size = (size_val, size_val)
             pil = pil.resize(size)
-
-            pil.putalpha(256)
+            
             arr = numpy.array(pil)
             cai_height, cai_width, _ = arr.shape
-            surface = cairo.ImageSurface.create_for_data(arr,
-                                                        cairo.FORMAT_ARGB32, cai_height, cai_width)
+
+            surface = cairo.ImageSurface.create_for_data(arr, c_format, cai_height, cai_width)
             GLib.idle_add(self.image_view.set_from_surface, surface)
         except Exception as e:
-            print('{}-{}: {}'.format(self.image.title, self.image.url, e))
+            print(e)
 
     def load_image(self, url):
         self.stream = Gio.file_new_for_uri(url)
