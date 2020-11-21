@@ -7,7 +7,7 @@ import numpy
 import os
 import random
 import requests
-import shutil  
+import shutil
 
 from background.reddit_background import Image
 from background.reddit_background import get_desktop_config
@@ -22,6 +22,8 @@ from gi.repository import GdkPixbuf
 from  PIL import Image as pilImage
 
 from i3_pywal.main import wal
+
+from importlib_resources import path
 
 class SubredditModel():
     """
@@ -78,7 +80,11 @@ class RedditImageView(Gtk.EventBox):
         self.model = model
         self.image = image 
         self.callback = callback
-        self.image_view = Gtk.Image()
+        
+        with path('background.resources.images', 'loading-wheel.gif') as p:
+            loading_wheel = p.as_posix()
+
+        self.image_view = Gtk.Image.new_from_file(loading_wheel)
 
         self.add(self.image_view)
 
@@ -110,6 +116,9 @@ class RedditImageView(Gtk.EventBox):
             surface = cairo.ImageSurface.create_for_data(arr, c_format, pil.height, pil.width)
             GLib.idle_add(self.image_view.set_from_surface, surface)
         except Exception as e:
+            with path('background.resources.images', 'load-error.png') as p:
+                GLib.idle_add(self.image_view.set_from_file, p.as_posix())
+
             print(e)
 
     def load_image(self, url):
