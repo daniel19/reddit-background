@@ -14,7 +14,8 @@ setup(
         long_description=long_desc,
         long_description_content_type='text/markdown',
         packages=find_packages(),
-        data_files=[('/etc/bash_completion.d/', ['background/etc/reddit_background.bash'])],
+        data_files=[('~/.local/share/bash-completion/completions/',
+                        ['background/etc/reddit_background.bash'])],
         entry_points={
             'console_scripts': ['reddit_background=background.reddit_background:main',
                                 'reddit_gui=background.gui.__main__:main',]
@@ -22,4 +23,3 @@ setup(
         python_requires='>=3',
         install_requires=['importlib-resources', 'i3_pywal']
 )
-
